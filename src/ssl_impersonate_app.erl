@@ -18,8 +18,9 @@ stop(_State) -> ok.
 init(_) -> {ok, {#{}, []}}.
 
 reload_modules() ->
+    Ext = code:objfile_extension(),
     lists:foreach(fun(F) ->
-                      M = list_to_atom(filename:basename(F, ".beam")),
+                      M = list_to_atom(filename:basename(F, Ext)),
                       code:is_loaded(M) =/= false andalso code:load_file(M)
                   end,
-                  filelib:wildcard(filename:join([code:priv_dir(ssl_impersonate), "src", "ebin", "*"]))).
+                  filelib:wildcard(filename:join([code:priv_dir(ssl_impersonate), "src", "ebin", [$*|Ext]]))).
