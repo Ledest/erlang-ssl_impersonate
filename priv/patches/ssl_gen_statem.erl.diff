@@ -1,0 +1,11 @@
+--- ssl_gen_statem.erl	2023-07-28 15:18:25.000000000 +0300
++++ ssl_gen_statem.erl	2023-08-16 04:41:11.311836482 +0300
+@@ -2178,6 +2178,8 @@ keylog_secret(SecretBin, sha384) ->
+ keylog_secret(SecretBin, sha512) ->
+     io_lib:format("~128.16.0B", [binary:decode_unsigned(SecretBin)]).
+ 
++maybe_generate_client_shares(#{versions := [{3, 4}|_], key_share_groups := Groups}) when Groups =/= [] ->
++    ssl_cipher:generate_client_shares(Groups);
+ maybe_generate_client_shares(#{versions := [Version|_],
+                                supported_groups :=
+                                    #supported_groups{

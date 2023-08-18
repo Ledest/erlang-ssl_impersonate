@@ -1,0 +1,24 @@
+--- tls_handshake_1_3.erl	2023-07-28 15:18:25.000000000 +0300
++++ tls_handshake_1_3.erl	2023-08-16 06:09:58.960396562 +0300
+@@ -408,6 +408,7 @@ encode_handshake(HandshakeMsg) ->
+ %% Decode handshake
+ %%====================================================================
+ 
++-define(CERTIFICATE_COMPRESSED, 25).
+ 
+ decode_handshake(?SERVER_HELLO, <<?BYTE(Major), ?BYTE(Minor), Random:32/binary,
+                                   ?BYTE(SID_length), Session_ID:SID_length/binary,
+@@ -470,6 +471,13 @@ decode_handshake(?END_OF_EARLY_DATA, _)
+     #end_of_early_data{};
+ decode_handshake(?KEY_UPDATE, <<?BYTE(Update)>>) ->
+     #key_update{request_update = decode_key_update(Update)};
++decode_handshake(?CERTIFICATE_COMPRESSED, <<I:8/binary, CertData/binary>>)->
++    ?SSL_LOG(debug, handshake_error,
++             [{reason, {compressed, I}}, {stacktrace, process_info(self(), current_stacktrace)}]),
++    case brotli:decode(CertData) of
++        error -> throw(?ALERT_REC(?FATAL, ?DECODE_ERROR, {compressed_certificate_error, ?CERTIFICATE_COMPRESSED}));
++        {ok, DecompressedCertificate} -> decode_handshake(?CERTIFICATE, DecompressedCertificate)
++    end;
+ decode_handshake(Tag, HandshakeMsg) ->
+     ssl_handshake:decode_handshake({3,4}, Tag, HandshakeMsg).
+ 

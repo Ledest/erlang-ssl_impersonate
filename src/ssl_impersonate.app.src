@@ -1,0 +1,10 @@
+{application, ssl_impersonate,
+ [{description, "SSL Impersonate"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {ssl_impersonate_app, []}},
+  {applications, [kernel, stdlib,
+                  ssl,
+                  brotli]},
+  {env, [{ssl_vsn, "10.9.1.1"}]},
+  {modules, []}]}.

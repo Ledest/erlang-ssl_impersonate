@@ -1,0 +1,10 @@
+--- ssl_cipher.erl	2023-07-28 15:18:25.000000000 +0300
++++ ssl_cipher.erl	2023-08-16 04:40:49.692309492 +0300
+@@ -1282,6 +1282,7 @@ generate_key_exchange(x25519) ->
+     crypto:generate_key(ecdh, x25519);
+ generate_key_exchange(x448) ->
+     crypto:generate_key(ecdh, x448);
++generate_key_exchange(grease) -> 0;
+ generate_key_exchange(FFDHE) ->
+     public_key:generate_key(ssl_dh_groups:dh_params(FFDHE)).
+ 

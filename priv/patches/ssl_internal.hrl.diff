@@ -1,0 +1,12 @@
+--- ssl_internal.hrl	2023-07-28 15:18:25.000000000 +0300
++++ ssl_internal.hrl	2023-08-16 05:06:00.527379285 +0300
+@@ -137,6 +137,9 @@
+           certfile                   => {<<>>,      [versions]},
+           certificate_authorities    => {false,     [versions]},
+           ciphers                    => {[],        [versions]},
++          substitute_cipher_suites   => {undefined, [versions]},
++          substitute_client_extensions => {undefined, [versions]},
++          key_share_groups           => {[],        [versions]},
+           client_renegotiation       => {undefined, [versions]},
+           cookie                     => {true,      [versions]},
+           crl_cache                  => {{ssl_crl_cache, {internal, []}}, [versions]},

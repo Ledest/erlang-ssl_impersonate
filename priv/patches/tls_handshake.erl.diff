@@ -1,0 +1,59 @@
+--- tls_handshake.erl	2023-07-28 15:18:25.000000000 +0300
++++ tls_handshake.erl	2023-08-16 06:49:37.996564625 +0300
+@@ -91,13 +91,21 @@ client_hello(_Host, _Port, ConnectionSta
+                                                        KeyShare,
+                                                        TicketData,
+                                                        OcspNonce, CertDbHandle, CertDbRef),
+-    CipherSuites = ssl_handshake:cipher_suites(AvailableCipherSuites, Renegotiation, Fallback),
+     #client_hello{session_id = Id,
+ 		  client_version = LegacyVersion,
+-		  cipher_suites = CipherSuites,
++		  cipher_suites = case SslOpts of
++                                      #{substitute_cipher_suites := RawCipherSuites}
++                                        when RawCipherSuites =/= undefined ->
++                                          RawCipherSuites;
++                                      _ -> ssl_handshake:cipher_suites(AvailableCipherSuites, Renegotiation, Fallback)
++                                  end,
+ 		  compression_methods = ssl_record:compressions(),
+ 		  random = SecParams#security_parameters.client_random,
+-		  extensions = Extensions
++		  extensions = case SslOpts of
++                                   #{substitute_client_extensions := RawExtensions} when RawExtensions =/= undefined ->
++                                       Extensions#{substitute => RawExtensions};
++                                   _ -> Extensions
++                               end
+ 		 }.
+ 
+ %%--------------------------------------------------------------------
+@@ -417,16 +425,26 @@ enc_handshake(#client_hello{client_versi
+     BinCipherSuites = list_to_binary(CipherSuites),
+     CsLength = byte_size(BinCipherSuites),
+     ExtensionsBin = ssl_handshake:encode_hello_extensions(HelloExtensions, Version),
+-
+-    {?CLIENT_HELLO, <<?BYTE(Major), ?BYTE(Minor), Random:32/binary,
+-		      ?BYTE(SIDLength), SessionID/binary,
+-		      ?UINT16(CsLength), BinCipherSuites/binary,
+-		      ?BYTE(CmLength), BinCompMethods/binary, ExtensionsBin/binary>>};
++    BaseFrameBin = <<?BYTE(Major), ?BYTE(Minor), Random:32/binary, ?BYTE(SIDLength), SessionID/binary,
++                     ?UINT16(CsLength), BinCipherSuites/binary, ?BYTE(CmLength), BinCompMethods/binary>>,
++    WireLen = byte_size(BaseFrameBin) + byte_size(ExtensionsBin) + 4,
++    {?CLIENT_HELLO,
++     case byte_size(BaseFrameBin) + byte_size(ExtensionsBin) + 4 of
++         WireLen when WireLen > 256 ->
++             case 512 - 4 - WireLen of
++                 PadLen when PadLen > 0 -> <<BaseFrameBin/binary, (add_padding(ExtensionsBin, PadLen))/binary>>;
++                 _ -> <<BaseFrameBin/binary, ExtensionsBin/binary>>
++             end;
++         _ -> <<BaseFrameBin/binary, ExtensionsBin/binary>>
++     end};
+ enc_handshake(HandshakeMsg, {3, 4}) ->
+     tls_handshake_1_3:encode_handshake(HandshakeMsg);
+ enc_handshake(HandshakeMsg, Version) ->
+     ssl_handshake:encode_handshake(HandshakeMsg, Version).
+ 
++add_padding(<<?UINT16(Size), ExtensionsData/binary>>, Len) ->
++    <<?UINT16((Size + 4 + Len)), ExtensionsData/binary, ?UINT16(21), ?UINT16(Len), 0:Len/unit:8>>.
++
+ %%--------------------------------------------------------------------
+ get_tls_handshakes_aux(Version, <<?BYTE(Type), ?UINT24(Length),
+ 				 Body:Length/binary,Rest/binary>>, 

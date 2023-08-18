@@ -1,0 +1,106 @@
+--- ssl_handshake.erl	2023-07-28 15:18:25.000000000 +0300
++++ ssl_handshake.erl	2023-08-16 06:52:43.256518333 +0300
+@@ -336,6 +336,22 @@ next_protocol(SelectedProtocol) ->
+ %%
+ %% Description: Handles a certificate handshake message
+ %%--------------------------------------------------------------------
++certify(#certificate{asn1_certificates = [PeerCert|_ChainCerts] = _ASN1Certs}, _CertDbHandle, _CertDbRef,
++        #{server_name_indication := _, partial_chain := _, verify := verify_none},
++        _CRLDbHandle, _Role, _Host, _Version, _CertExt) ->
++    try
++        #'OTPCertificate'{tbsCertificate = TBSCertificate} = public_key:pkix_decode_cert(PeerCert, otp),
++        #'OTPTBSCertificate'{subjectPublicKeyInfo = SubjectPublicKeyInfo} = TBSCertificate,
++        #'OTPSubjectPublicKeyInfo'{algorithm = {'PublicKeyAlgorithm', Alg, Params},
++                                   subjectPublicKey = PubKey} = SubjectPublicKeyInfo,
++        {PeerCert, {Alg, PubKey, Params}}
++    catch
++        error:{_, {error, {asn1, Asn1Reason}}} ->
++            %% ASN-1 decode of certificate somehow failed
++            ?ALERT_REC(?FATAL, ?CERTIFICATE_UNKNOWN, {failed_to_decode_certificate, Asn1Reason});
++        error:OtherReason ->
++            ?ALERT_REC(?FATAL, ?INTERNAL_ERROR, {unexpected_error, OtherReason})
++    end;
+ certify(#certificate{asn1_certificates = ASN1Certs}, CertDbHandle, CertDbRef,
+         #{server_name_indication := ServerNameIndication,
+           partial_chain := PartialChain} = SSlOptions, 
+@@ -599,14 +615,29 @@ encode_handshake(#finished{verify_data =
+ encode_hello_extensions(_, {3, 0}) ->
+     <<>>;
+ encode_hello_extensions(Extensions, _) ->
+-    encode_extensions(hello_extensions_list(Extensions), <<>>).
++    encode_extensions_custom(hello_extensions_list(Extensions), <<>>).
+ 
+ encode_extensions(Exts) ->
+-    encode_extensions(Exts, <<>>).
+-    
+-encode_extensions([], <<>>) ->
++    encode_extensions_custom(Exts, <<>>).
++
++-define(GREASE_TOP, 16#baba).
++-define(GREASE_BOTTOM, 16#2a2a).
++
++encode_extensions_custom([], <<>>) ->
+     <<?UINT16(0)>>;
+-encode_extensions([], Acc) ->
++encode_extensions_custom(Rest, <<>>) ->
++    encode_extensions(Rest,
++                      case lists:keyfind(encoded, 1, Rest) of
++                          {_encoded, _} -> <<?UINT16(?GREASE_BOTTOM), ?UINT16(1), 0>>;
++                          _ -> <<>>
++                      end).
++
++encode_extensions([{encoded, BinExtension} | Rest], Acc) -> encode_extensions(Rest, <<BinExtension/binary, Acc/binary>>);
++encode_extensions([], Acc0) ->
++    Acc = case binary:match(Acc0, <<?UINT16(?GREASE_BOTTOM)>>) of
++              nomatch -> Acc0;
++              _ -> <<?UINT16(?GREASE_TOP), ?UINT16(0), Acc0/binary>>
++          end,
+     Size = byte_size(Acc),
+     <<?UINT16(Size), Acc/binary>>;
+ encode_extensions([#alpn{extension_data = ExtensionData} | Rest], Acc) ->
+@@ -904,9 +935,8 @@ decode_handshake(_Version, ?CLIENT_KEY_E
+     #client_key_exchange{exchange_keys = PKEPMS};
+ decode_handshake(_Version, ?FINISHED, VerifyData) ->
+     #finished{verify_data = VerifyData};
+-decode_handshake(_, MessageType, _) ->
+-    throw(?ALERT_REC(?FATAL, ?DECODE_ERROR, {unknown_or_malformed_handshake, MessageType})).
+-
++decode_handshake(_, MessageType, Message) ->
++    throw(?ALERT_REC(?FATAL, ?DECODE_ERROR, {unknown_or_malformed_handshake, MessageType, Message})).
+ 
+ %%--------------------------------------------------------------------
+ -spec decode_vector(binary()) -> binary().
+@@ -1444,6 +1474,8 @@ add_selected_version(Extensions) ->
+     SupportedVersions = #server_hello_selected_version{selected_version = {3,4}},
+     Extensions#{server_hello_selected_version => SupportedVersions}.
+ 
++kse_remove_private_key(#key_share_entry{group = Group, key_exchange = 0}) ->
++    #key_share_entry{group = Group, key_exchange = 0};
+ kse_remove_private_key(#key_share_entry{
+                       group = Group,
+                       key_exchange =
+@@ -2577,6 +2609,9 @@ encode_client_shares([KeyShareEntry0|T],
+     KeyShareEntry = encode_key_share_entry(KeyShareEntry0),
+     encode_client_shares(T, <<Acc/binary,KeyShareEntry/binary>>).
+ 
++-define(GREASE_KEY_SHARE, 16#8a8a).
++
++encode_key_share_entry(#key_share_entry{key_exchange = 0}) -> <<?UINT16(?GREASE_KEY_SHARE), ?UINT16(1), 0>>;
+ encode_key_share_entry(#key_share_entry{
+                           group = Group,
+                           key_exchange = KeyExchange}) ->
+@@ -2618,6 +2653,14 @@ encode_psk_binders([Binder|T], Acc) ->
+     encode_psk_binders(T, <<Acc/binary,?BYTE(Len),Binder/binary>>).
+ 
+ 
++hello_extensions_list(#{substitute := S} = HelloExtensions) ->
++    lists:reverse(lists:filtermap(fun(B) when is_binary(B) -> {true, {encoded, B}};
++                                     (K) when is_atom(K) ->
++                                      case maps:get(K, HelloExtensions, undefined) of
++                                          undefined -> false;
++                                          Value -> {true, Value}
++                                      end
++                                  end, S));
+ hello_extensions_list(HelloExtensions) ->
+     [Ext || {_, Ext} <- maps:to_list(HelloExtensions), Ext =/= undefined].
+ 

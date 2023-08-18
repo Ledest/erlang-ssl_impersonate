@@ -1,0 +1,15 @@
+.rebar
+deps/*
+*~
+*.swp
+*.state
+/_build
+/ebin
+/doc
+/.eunit
+/rebar.lock
+/priv/ssl
+.project
+.kateproject
+.settings/
+erl_crash.dump

@@ -1,0 +1,19 @@
+--- ssl.erl	2023-07-28 15:18:25.000000000 +0300
++++ ssl.erl	2023-08-16 04:40:24.380867553 +0300
+@@ -1920,6 +1920,16 @@ handle_option(cb_info = Option, Value0,
+     validate_option(Option, Value0),
+     Value = handle_cb_info(Value0),
+     OptionsMap#{Option => Value};
++%% Impersonate
++handle_option(Option, unbound, OptionsMap, _Env)
++  when Option =:= substitute_cipher_suites; Option =:= substitute_client_extensions; Option =:= key_share_groups ->
++    OptionsMap;
++handle_option(Option, Value, OptionsMap, _Env)
++  when Option =:= substitute_cipher_suites orelse
++       Option =:= substitute_client_extensions orelse
++       Option =:= key_share_groups,
++       is_list(Value) ->
++    OptionsMap#{Option => Value};
+ %% Generic case
+ handle_option(Option, unbound, OptionsMap, #{rules := Rules}) ->
+     Value = validate_option(Option, default_value(Option, Rules)),

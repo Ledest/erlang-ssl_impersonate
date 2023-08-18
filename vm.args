@@ -1,0 +1,6 @@
+-sname ssl_impersonate
+-setcookie live
++pc unicode
++sbwt none
++sbwtdcpu none
++sbwtdio none
