@@ -33,4 +33,4 @@ reload_modules() ->
                       M = list_to_atom(filename:basename(F, Ext)),
                       code:is_loaded(M) =/= false andalso code:load_file(M)
                   end,
-                  filelib:wildcard(filename:join([code:priv_dir(ssl_impersonate), "src", "ebin", [$*|Ext]]))).
+                  filelib:wildcard(filename:join(path(), [$*|Ext]))).
